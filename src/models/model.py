@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime
-from src.configs.db import Base
+from configs.db import Base
 
 class Url(Base):
     __tablename__ = "urls"

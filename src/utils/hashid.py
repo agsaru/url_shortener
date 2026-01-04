@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-salt = os.getenv("HASHED_SALT", "default_salt")
+salt = os.getenv("HASHED_SALT")
 hashids = Hashids(salt=salt, min_length=6)
 
 def encode_id(id_val: int) -> str:

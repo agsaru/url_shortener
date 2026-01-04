@@ -1,9 +1,12 @@
 from fastapi import FastAPI
-from . import models, database, routes
+from configs.db import engine, Base
+from models.model import Url 
+from routes.routes import router
 
-models.Base.metadata.create_all(bind=database.engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="URL Shortener")
-
-app.include_router(routes.router)
-
+app.include_router(router)
+@app.get("/")
+def hello():
+    return {"message": "Backend is running"}
