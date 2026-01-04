@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from models.model import Url
 from utils.hashid import encode_id
 
-def create_short_url(db: Session, long_url: str, host_url: str):
+def create_short_url(db: Session, long_url: str, base_url: str):
     db_url = Url(long_url=long_url)
     db.add(db_url)
     db.commit()
@@ -14,7 +14,7 @@ def create_short_url(db: Session, long_url: str, host_url: str):
     return {
         "short_code": code,
         "created_at": db_url.created_at,
-        "short_url": f"{host_url}{code}"
+        "short_url": f"{base_url}{code}"
     }
 
 def get_url_by_code(db: Session, short_code: str):
