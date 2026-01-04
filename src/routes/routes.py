@@ -1,21 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
-from  src import database, schemas, crud, models
+
+from src.configs import db as database
+from src.models import schema
+from utils import url
 
 router = APIRouter()
 
-@router.post("/shorten", response_model=schemas.UrlResponse)
+@router.post("/shorten", response_model=schema.UrlResponse)
 def shorten_url(
-    payload: schemas.UrlCreate, 
+    payload: schema.UrlCreate, 
     request: Request, 
     db: Session = Depends(database.get_db)
 ):
     try:
         base_url = str(request.base_url)
-        
-        result = crud.create_short_url(db, str(payload.longUrl), base_url)
+        result = url.create_short_url(db, str(payload.longUrl), base_url)
         
         return {
             "success": True,
@@ -32,13 +34,14 @@ def shorten_url(
 @router.get("/{short_code}")
 def redirect_url(short_code: str, db: Session = Depends(database.get_db)):
     try:
-        url_data = crud.get_url_by_code(db, short_code)
+        url_data = url.get_url_by_code(db, short_code)
         
         if not url_data:
             return JSONResponse(
                 status_code=404, 
                 content={"success": False, "message": "Short URL not found"}
             )
+        
         url_data.visit_count += 1
         url_data.last_visit = datetime.utcnow()
         db.commit()
@@ -53,7 +56,7 @@ def redirect_url(short_code: str, db: Session = Depends(database.get_db)):
 @router.get("/stats/{short_code}")
 def get_url_stats(short_code: str, db: Session = Depends(database.get_db)):
     try:
-        url_data = crud.get_url_by_code(db, short_code)
+        url_data = url.get_url_by_code(db, short_code)
         
         if not url_data:
             return JSONResponse(

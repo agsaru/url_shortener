@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from . import models, utils
+from .. import models, utils
 
 def create_short_url(db: Session, long_url: str, host_url: str):
     db_url = models.Url(long_url=long_url)

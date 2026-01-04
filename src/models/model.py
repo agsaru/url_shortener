@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.sql import func
-from configs.db import Base
 from datetime import datetime
+from src.configs.db import Base
 
 class Url(Base):
     __tablename__ = "urls"
@@ -11,4 +10,4 @@ class Url(Base):
     short_code = Column(String, unique=True, index=True, nullable=True)
     visit_count = Column(Integer, default=0)
     last_visit = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now())
