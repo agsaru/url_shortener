@@ -7,6 +7,7 @@ from src.configs.db import get_db
 from src.configs.redis_client import cache 
 from src.models.schema import UrlCreate, UrlResponse
 from src.utils.url import create_short_url, get_url_by_code, update_url_stats
+from src.configs.limiter import limiter
 
 router = APIRouter()
 
@@ -16,6 +17,7 @@ router = APIRouter()
     response_model=UrlResponse,
     status_code=status.HTTP_201_CREATED
 )
+@limiter.limit("5/minute")
 def shorten_url(
     payload: UrlCreate,
     request: Request,
