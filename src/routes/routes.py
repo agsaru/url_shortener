@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from datetime import datetime,UTC
 
 from src.configs.db import get_db
+from src.configs.redis_client import cache 
 from src.models.schema import UrlCreate, UrlResponse
-from src.utils.url import create_short_url, get_url_by_code
+from src.utils.url import create_short_url, get_url_by_code, update_url_stats
 
 router = APIRouter()
 
@@ -41,13 +42,15 @@ def shorten_url(
         "createdAt": result["created_at"],
         "message": result.get("message", "Success")
     }
-def update_url_stats_db(db: Session, url_data):
-    url_data.visit_count += 1
-    url_data.last_visit = datetime.now(UTC)
-    db.commit()
 
 @router.get("/{short_code}", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 def redirect_url(short_code: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    cached_long_url = cache.get(short_code)
+    
+    if cached_long_url:
+        background_tasks.add_task(update_url_stats, db, short_code)
+        return RedirectResponse(url=cached_long_url)
+
     url_data = get_url_by_code(db, short_code)
 
     if not url_data:
@@ -55,14 +58,16 @@ def redirect_url(short_code: str, background_tasks: BackgroundTasks, db: Session
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Short URL not found"
         )
-
+        
     if url_data.expires_at and url_data.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="This Short URL has expired"
         )
 
-    background_tasks.add_task(update_url_stats_db, db, url_data)
+    cache.setex(short_code, 86400, url_data.long_url)
+
+    background_tasks.add_task(update_url_stats, db, short_code)
 
     return RedirectResponse(url=url_data.long_url)
 

@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from datetime import datetime, UTC
+
 from src.models.model import Url
 from src.utils.hashid import encode_id
 
@@ -40,3 +42,10 @@ def create_short_url(db: Session, long_url: str, base_url: str, custom_alias: st
 
 def get_url_by_code(db: Session, short_code: str):
     return db.query(Url).filter(Url.short_code == short_code).first()
+
+def update_url_stats(db: Session, short_code: str):
+    db.query(Url).filter(Url.short_code == short_code).update({
+        Url.visit_count: Url.visit_count + 1,
+        Url.last_visit: datetime.now(UTC)
+    }, synchronize_session=False)
+    db.commit()
