@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, Depends, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime,UTC
@@ -41,9 +41,13 @@ def shorten_url(
         "createdAt": result["created_at"],
         "message": result.get("message", "Success")
     }
+def update_url_stats_db(db: Session, url_data):
+    url_data.visit_count += 1
+    url_data.last_visit = datetime.now(UTC)
+    db.commit()
 
 @router.get("/{short_code}", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-def redirect_url(short_code: str, db: Session = Depends(get_db)):
+def redirect_url(short_code: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     url_data = get_url_by_code(db, short_code)
 
     if not url_data:
@@ -52,9 +56,13 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
             detail="Short URL not found"
         )
 
-    url_data.visit_count += 1
-    url_data.last_visit = datetime.now(UTC)
-    db.commit()
+    if url_data.expires_at and url_data.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This Short URL has expired"
+        )
+
+    background_tasks.add_task(update_url_stats_db, db, url_data)
 
     return RedirectResponse(url=url_data.long_url)
 
