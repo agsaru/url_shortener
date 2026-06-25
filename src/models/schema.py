@@ -4,6 +4,7 @@ from typing import Optional
 
 class UrlCreate(BaseModel):
     longUrl: HttpUrl
+    custom_alias: Optional[str] = None
 
 class UrlResponse(BaseModel):
     success: bool

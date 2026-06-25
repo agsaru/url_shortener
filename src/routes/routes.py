@@ -3,9 +3,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime,UTC
 
-from configs.db import get_db
-from models.schema import UrlCreate, UrlResponse
-from utils.url import create_short_url, get_url_by_code
+from src.configs.db import get_db
+from src.models.schema import UrlCreate, UrlResponse
+from src.utils.url import create_short_url, get_url_by_code
 
 router = APIRouter()
 
@@ -25,16 +25,22 @@ def shorten_url(
     result = create_short_url(
         db=db,
         long_url=str(payload.longUrl),
-        base_url=base_url
+        base_url=base_url,
+        custom_alias=payload.custom_alias 
     )
+
+    if "error" in result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["error"]
+        )
 
     return {
         "success": True,
         "shortURL": result["short_url"],
         "createdAt": result["created_at"],
-        "message": "New Short Url created successfully"
+        "message": result.get("message", "Success")
     }
-
 
 @router.get("/{short_code}", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 def redirect_url(short_code: str, db: Session = Depends(get_db)):
