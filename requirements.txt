@@ -6,3 +6,4 @@ python-dotenv
 hashids
 pydantic
 email-validator
+alembic
