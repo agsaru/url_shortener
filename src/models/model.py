@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.sql import func
-from configs.db import Base
+from src.configs.db import Base
 
 class Url(Base):
     __tablename__ = "urls"
@@ -11,3 +11,4 @@ class Url(Base):
     visit_count = Column(Integer, default=0)
     last_visit = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
+    expires_at = Column(DateTime, nullable=True)

@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 # Import your Base and models
-from configs.db import Base
-import models.model  # Ensure models are loaded into Base.metadata
+from src.configs.db import Base
+import src.models.model  # Ensure models are loaded into Base.metadata
 # -------------------------------------------------
 
 # this is the Alembic Config object, which provides
