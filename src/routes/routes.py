@@ -30,25 +30,6 @@ def record_visit_safely(db: Session, short_code: str) -> None:
         logger.exception("Unable to update visit statistics for %s", short_code)
 
 
-def get_url_or_raise(db: Session, short_code: str):
-    try:
-        return get_url_by_code(db, short_code)
-    except OperationalError as exc:
-        db.rollback()
-        logger.exception("Database unavailable while looking up %s", short_code)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="We couldn't look up that short link right now. Please try again in a moment.",
-        ) from exc
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.exception("Database error while looking up %s", short_code)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong while looking up that short link. Please try again.",
-        ) from exc
-
-
 @router.post(
     "/shorten",
     response_model=UrlResponse,
@@ -164,7 +145,22 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
                 record_visit_safely(db, short_code)
                 return RedirectResponse(url=cached_data["long_url"])
 
-    url_data = get_url_or_raise(db, short_code)
+    try:
+        url_data = get_url_by_code(db, short_code)
+    except OperationalError as exc:
+        db.rollback()
+        logger.exception("Database unavailable while looking up %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We couldn't look up that short link right now. Please try again in a moment.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while looking up %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong while looking up that short link. Please try again.",
+        ) from exc
 
     if not url_data:
         raise HTTPException(
@@ -199,7 +195,22 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
 
 @router.get("/stats/{short_code}")
 def get_url_stats(short_code: str, db: Session = Depends(get_db)):
-    url_data = get_url_or_raise(db, short_code)
+    try:
+        url_data = get_url_by_code(db, short_code)
+    except OperationalError as exc:
+        db.rollback()
+        logger.exception("Database unavailable while looking up stats for %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We couldn't load these statistics right now. Please try again in a moment.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while looking up stats for %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong while loading these statistics. Please try again.",
+        ) from exc
 
     if not url_data:
         raise HTTPException(
