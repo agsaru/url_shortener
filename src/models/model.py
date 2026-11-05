@@ -6,7 +6,7 @@ class Url(Base):
     __tablename__ = "urls"
 
     id = Column(Integer, primary_key=True, index=True)
-    long_url = Column(String, nullable=False)
+    long_url = Column(String, unique=True, nullable=False)
     short_code = Column(String, unique=True, index=True, nullable=True)
     visit_count = Column(Integer, default=0)
     last_visit = Column(DateTime, nullable=True)

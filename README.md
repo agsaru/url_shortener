@@ -141,6 +141,12 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 > `custom_alias` is optional.
 
+Equivalent HTTP URLs (such as host-name case or a default port difference) are
+normalized, and submitting the same destination URL again returns the existing short URL.
+Providing a different custom alias for an already shortened URL is rejected.
+Custom aliases may contain only letters, numbers, underscores, and hyphens,
+with a maximum length of 64 characters.
+
 ### Response (201 Created)
 
 ```json
@@ -166,7 +172,8 @@ Additional behavior:
 
 - Checks Redis cache before querying the database.
 - Stores the URL in Redis for **24 hours (86400 seconds)** after a cache miss.
-- Updates analytics asynchronously in the background.
+- Checks expiration for cached and database-backed URLs.
+- Updates analytics before returning the redirect.
 - Returns an HTTP **307 Temporary Redirect**.
 
 ### Response
