@@ -1,12 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func
+
 from src.configs.db import Base
+
 
 class Url(Base):
     __tablename__ = "urls"
+    __table_args__ = (
+        UniqueConstraint("long_url", name="uq_urls_long_url"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    long_url = Column(String, unique=True, nullable=False)
+    long_url = Column(String, nullable=False)
     short_code = Column(String, unique=True, index=True, nullable=True)
     visit_count = Column(Integer, default=0)
     last_visit = Column(DateTime, nullable=True)

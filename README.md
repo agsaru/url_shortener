@@ -96,7 +96,7 @@ source venv/bin/activate
 
 ```powershell
 python -m venv venv
-venv\Scripts\activate
+venv\\Scripts\\activate
 ```
 
 ### 2. Install dependencies
@@ -123,6 +123,26 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+## Testing
+
+Install the development dependencies and run the regular test suite:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The concurrency tests use PostgreSQL and are skipped unless `TEST_DATABASE_URL` is set. Point it to a dedicated test database, never your production database:
+
+```bash
+export TEST_DATABASE_URL="postgresql://user:password@localhost:5432/url_shortener_test"
+pytest tests/test_concurrency.py
+```
+
+The concurrency tests synchronize competing requests at their initial database checks to exercise duplicate-destination and duplicate-alias races.
+
+---
+
 # 📚 API Endpoints
 
 ## 1. Shorten a URL
@@ -142,10 +162,12 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 > `custom_alias` is optional.
 
 Equivalent HTTP URLs (such as host-name case or a default port difference) are
-normalized, and submitting the same destination URL again returns the existing short URL.
-Providing a different custom alias for an already shortened URL is rejected.
-Custom aliases may contain only letters, numbers, underscores, and hyphens,
-with a maximum length of 64 characters.
+normalized, and submitting the same destination URL again returns the existing
+short URL with **200 OK**. Providing a different custom alias for an already
+shortened URL, or choosing an alias already in use, returns **409 Conflict**.
+Invalid URLs and aliases return **422 Unprocessable Entity**. Custom aliases
+may contain only letters, numbers, underscores, and hyphens, with a maximum
+length of 64 characters.
 Only HTTP and HTTPS URLs are accepted. The service validates URL syntax but
 does not perform DNS or availability checks, because destinations can become
 unreachable after shortening and network checks would make requests unreliable.
