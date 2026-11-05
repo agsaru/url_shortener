@@ -56,7 +56,7 @@ def synchronize_initial_checks(engine, synchronize_alias_check=False):
                 barrier.wait(timeout=10)
             return
 
-    event.listen(engine, "before_cursor_execute", listener)
+    event.listen(engine, "after_cursor_execute", listener)
     return listener
 
 
@@ -88,7 +88,7 @@ def test_concurrent_requests_for_same_url_return_same_short_url(
             ]
             results = [future.result(timeout=20) for future in futures]
     finally:
-        event.remove(engine, "before_cursor_execute", listener)
+        event.remove(engine, "after_cursor_execute", listener)
 
     try:
         assert all(isinstance(result, dict) for result in results)
@@ -128,7 +128,7 @@ def test_concurrent_requests_for_same_alias_return_one_conflict(
             ]
             results = [future.result(timeout=20) for future in futures]
     finally:
-        event.remove(engine, "before_cursor_execute", listener)
+        event.remove(engine, "after_cursor_execute", listener)
 
     try:
         successes = [result for result in results if isinstance(result, dict)]
