@@ -23,6 +23,10 @@ from src.utils.url import normalize_url
             "https://example.com/path?a=1#section",
             "https://example.com/path?a=1#section",
         ),
+        (
+            "https://example.com/path?b=2&a=1",
+            "https://example.com/path?a=1&b=2",
+        ),
     ],
 )
 def test_normalize_url(url, expected):

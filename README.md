@@ -37,9 +37,16 @@ DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 REDIS_URL=redis://localhost:6379/0
 # If using Docker: redis://redis:6379/0
 
+# Public URL used in generated short links
+PUBLIC_BASE_URL=http://localhost:8080
+
 # Application Secrets
 HASHED_SALT=your_super_secret_random_salt_string
 ```
+
+`PUBLIC_BASE_URL` must be the externally reachable HTTP or HTTPS address of
+the API. It is used instead of the request `Host` header so clients cannot
+make the service generate links for an untrusted domain.
 
 # 🛠️ Setup & Installation
 
@@ -141,6 +148,9 @@ pytest tests/test_concurrency.py
 
 The concurrency tests synchronize competing requests at their initial database checks to exercise duplicate-destination and duplicate-alias races.
 
+Rate limiting uses the configured Redis instance, so the limit is shared across
+backend workers and containers.
+
 ---
 
 # 📚 API Endpoints
@@ -161,7 +171,7 @@ The concurrency tests synchronize competing requests at their initial database c
 
 > `custom_alias` is optional.
 
-Equivalent HTTP URLs (such as host-name case or a default port difference) are
+Equivalent HTTP URLs (such as host-name case, query parameter order, or a default port difference) are
 normalized, and submitting the same destination URL again returns the existing
 short URL with **200 OK**. Providing a different custom alias for an already
 shortened URL, or choosing an alias already in use, returns **409 Conflict**.

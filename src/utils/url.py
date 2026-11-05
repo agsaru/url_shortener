@@ -1,7 +1,7 @@
 import re
 from datetime import UTC, datetime
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -52,11 +52,16 @@ def normalize_url(long_url: str) -> str:
     ):
         host = f"{host}:{port}"
 
+    normalized_query = urlencode(
+        sorted(parse_qsl(parsed.query, keep_blank_values=True)),
+        doseq=True,
+    )
+
     return urlunsplit((
         scheme,
         host,
         parsed.path or "/",
-        parsed.query,
+        normalized_query,
         parsed.fragment,
     ))
 

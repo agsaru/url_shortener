@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.configs.db import get_db
 from src.configs.limiter import limiter
 from src.configs.redis_client import cache
+from src.configs.settings import PUBLIC_BASE_URL
 from src.models.schema import UrlCreate, UrlResponse
 from src.utils.url import (
     ShortUrlConflictError,
@@ -46,7 +47,7 @@ def shorten_url(
         result = create_short_url(
             db=db,
             long_url=str(payload.longUrl),
-            base_url=str(request.base_url),
+            base_url=f"{PUBLIC_BASE_URL}/",
             custom_alias=payload.custom_alias
         )
     except ShortUrlConflictError as exc:
