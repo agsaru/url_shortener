@@ -146,6 +146,10 @@ normalized, and submitting the same destination URL again returns the existing s
 Providing a different custom alias for an already shortened URL is rejected.
 Custom aliases may contain only letters, numbers, underscores, and hyphens,
 with a maximum length of 64 characters.
+Only HTTP and HTTPS URLs are accepted. The service validates URL syntax but
+does not perform DNS or availability checks, because destinations can become
+unreachable after shortening and network checks would make requests unreliable.
+URLs containing embedded usernames or passwords are rejected.
 
 ### Response (201 Created)
 
