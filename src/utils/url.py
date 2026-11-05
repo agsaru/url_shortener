@@ -17,42 +17,48 @@ class ShortUrlConflictError(Exception):
 
 
 def normalize_url(long_url: str) -> str:
+    if any(char.isspace() for char in long_url):
+        raise ValueError("URLs cannot contain spaces. Please remove them and try again.")
+
     try:
         parsed = urlsplit(long_url.strip())
-        scheme = parsed.scheme.lower()
+    except ValueError as exc:
+        raise ValueError("Please enter a valid HTTP or HTTPS URL.") from exc
 
-        if scheme not in {"http", "https"}:
-            raise ValueError("Only HTTP and HTTPS URLs are allowed")
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError("Only HTTP and HTTPS URLs are supported.")
 
-        if parsed.username is not None or parsed.password is not None:
-            raise ValueError("URLs containing username or password are not allowed")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(
+            "URLs with a username or password are not allowed. Remove those details and try again."
+        )
 
-        hostname = parsed.hostname
-        if not hostname:
-            raise ValueError("URL must include a valid hostname")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Please enter a complete URL, including its hostname.")
 
-        if any(char.isspace() for char in long_url):
-            raise ValueError("URL cannot contain whitespace")
-
+    try:
         hostname = hostname.encode("idna").decode("ascii").lower()
-        host = f"[{hostname}]" if ":" in hostname else hostname
         port = parsed.port
-
-        if port is not None and not (
-            (scheme == "http" and port == 80)
-            or (scheme == "https" and port == 443)
-        ):
-            host = f"{host}:{port}"
-
-        return urlunsplit((
-            scheme,
-            host,
-            parsed.path or "/",
-            parsed.query,
-            parsed.fragment,
-        ))
     except (UnicodeError, ValueError) as exc:
-        raise ValueError(f"Invalid URL: {exc}") from exc
+        raise ValueError("Please enter a valid HTTP or HTTPS URL.") from exc
+
+    host = f"[{hostname}]" if ":" in hostname else hostname
+
+    if port is not None and not (
+        (scheme == "http" and port == 80)
+        or (scheme == "https" and port == 443)
+    ):
+        host = f"{host}:{port}"
+
+    return urlunsplit((
+        scheme,
+        host,
+        parsed.path or "/",
+        parsed.query,
+        parsed.fragment,
+    ))
 
 
 def _url_result(url: Url, base_url: str, message: str) -> dict:
@@ -74,16 +80,16 @@ def create_short_url(
 
     if custom_alias is not None and not ALIAS_PATTERN.fullmatch(custom_alias):
         raise ValueError(
-            "Custom alias must contain only letters, numbers, underscores, "
-            "or hyphens, and be at most 64 characters"
+            "Aliases can only contain letters, numbers, underscores, and hyphens, "
+            "and must be 64 characters or fewer."
         )
 
     existing_url = db.query(Url).filter(Url.long_url == long_url).first()
     if existing_url:
         if custom_alias is not None and custom_alias != existing_url.short_code:
             raise ShortUrlConflictError(
-                "URL already shortened with a different alias: "
-                f"{existing_url.short_code}"
+                f"This URL already has the short link '{existing_url.short_code}'. "
+                "Use that link or shorten a different URL."
             )
         return _url_result(existing_url, base_url, "URL already shortened")
 
@@ -92,10 +98,11 @@ def create_short_url(
             db.query(Url).filter(Url.short_code == custom_alias).first()
         )
         if alias_exists:
-            raise ShortUrlConflictError("Custom alias already in use")
+            raise ShortUrlConflictError(
+                "That custom alias is already in use. Please choose another one."
+            )
 
-    max_attempts = 5
-    for _ in range(max_attempts):
+    for _ in range(5):
         attempted_code = None
 
         try:
@@ -124,8 +131,8 @@ def create_short_url(
                     and custom_alias != existing_url.short_code
                 ):
                     raise ShortUrlConflictError(
-                        "URL already shortened with a different alias: "
-                        f"{existing_url.short_code}"
+                        f"This URL already has the short link '{existing_url.short_code}'. "
+                        "Use that link or shorten a different URL."
                     )
                 return _url_result(
                     existing_url,
@@ -142,7 +149,7 @@ def create_short_url(
                 if code_owner:
                     if custom_alias is not None:
                         raise ShortUrlConflictError(
-                            "Custom alias already in use"
+                            "That custom alias is already in use. Please choose another one."
                         )
                     continue
 

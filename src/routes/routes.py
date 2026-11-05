@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from redis.exceptions import RedisError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.configs.db import get_db
@@ -30,6 +30,25 @@ def record_visit_safely(db: Session, short_code: str) -> None:
         logger.exception("Unable to update visit statistics for %s", short_code)
 
 
+def get_url_or_raise(db: Session, short_code: str):
+    try:
+        return get_url_by_code(db, short_code)
+    except OperationalError as exc:
+        db.rollback()
+        logger.exception("Database unavailable while looking up %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We couldn't look up that short link right now. Please try again in a moment.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while looking up %s", short_code)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong while looking up that short link. Please try again.",
+        ) from exc
+
+
 @router.post(
     "/shorten",
     response_model=UrlResponse,
@@ -42,13 +61,11 @@ def shorten_url(
     response: Response,
     db: Session = Depends(get_db)
 ):
-    base_url = str(request.base_url)
-
     try:
         result = create_short_url(
             db=db,
             long_url=str(payload.longUrl),
-            base_url=base_url,
+            base_url=str(request.base_url),
             custom_alias=payload.custom_alias
         )
     except ShortUrlConflictError as exc:
@@ -66,14 +83,21 @@ def shorten_url(
         logger.exception("Unable to generate a unique short code")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to create a short URL right now",
+            detail="We couldn't create your short link right now. Please try again.",
+        ) from exc
+    except OperationalError as exc:
+        db.rollback()
+        logger.exception("Database unavailable while creating a short URL")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We couldn't save your short link right now. Please try again in a moment.",
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.exception("Database failure while shortening URL")
+        logger.exception("Unexpected database error while creating a short URL")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="URL shortening service is temporarily unavailable",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong while creating your short link. Please try again.",
         ) from exc
 
     if result["message"] == "URL already shortened":
@@ -140,7 +164,7 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
                 record_visit_safely(db, short_code)
                 return RedirectResponse(url=cached_data["long_url"])
 
-    url_data = get_url_by_code(db, short_code)
+    url_data = get_url_or_raise(db, short_code)
 
     if not url_data:
         raise HTTPException(
@@ -175,12 +199,12 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
 
 @router.get("/stats/{short_code}")
 def get_url_stats(short_code: str, db: Session = Depends(get_db)):
-    url_data = get_url_by_code(db, short_code)
+    url_data = get_url_or_raise(db, short_code)
 
     if not url_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Short Url not found"
+            detail="Short URL not found"
         )
 
     return {
