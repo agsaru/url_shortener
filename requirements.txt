@@ -9,3 +9,4 @@ email-validator
 alembic
 redis
 slowapi
+pytest>=8.0

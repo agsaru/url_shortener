@@ -125,10 +125,10 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Testing
 
-Install the development dependencies and run the regular test suite:
+Install the project dependencies and run the regular test suite:
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 pytest
 ```
 
