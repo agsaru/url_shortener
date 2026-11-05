@@ -1,15 +1,19 @@
 import re
+from datetime import UTC, datetime
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
-from datetime import datetime, UTC
 
 from src.models.model import Url
 from src.utils.hashid import encode_id
 
 ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class ShortUrlConflictError(Exception):
+    pass
 
 
 def normalize_url(long_url: str) -> str:
@@ -51,6 +55,15 @@ def normalize_url(long_url: str) -> str:
         raise ValueError(f"Invalid URL: {exc}") from exc
 
 
+def _url_result(url: Url, base_url: str, message: str) -> dict:
+    return {
+        "short_code": url.short_code,
+        "created_at": url.created_at,
+        "short_url": f"{base_url}{url.short_code}",
+        "message": message,
+    }
+
+
 def create_short_url(
     db: Session,
     long_url: str,
@@ -60,73 +73,84 @@ def create_short_url(
     long_url = normalize_url(long_url)
 
     if custom_alias is not None and not ALIAS_PATTERN.fullmatch(custom_alias):
-        return {
-            "error": (
-                "Custom alias must contain only letters, numbers, underscores, "
-                "or hyphens, and be at most 64 characters"
-            )
-        }
+        raise ValueError(
+            "Custom alias must contain only letters, numbers, underscores, "
+            "or hyphens, and be at most 64 characters"
+        )
 
     existing_url = db.query(Url).filter(Url.long_url == long_url).first()
     if existing_url:
-        if custom_alias and custom_alias != existing_url.short_code:
-            return {
-                "error": (
-                    "URL already shortened with a different alias: "
-                    f"{existing_url.short_code}"
-                )
-            }
-        return {
-            "short_code": existing_url.short_code,
-            "created_at": existing_url.created_at,
-            "short_url": f"{base_url}{existing_url.short_code}",
-            "message": "URL already shortened",
-        }
+        if custom_alias is not None and custom_alias != existing_url.short_code:
+            raise ShortUrlConflictError(
+                "URL already shortened with a different alias: "
+                f"{existing_url.short_code}"
+            )
+        return _url_result(existing_url, base_url, "URL already shortened")
 
-    if custom_alias:
-        alias_exists = db.query(Url).filter(Url.short_code == custom_alias).first()
+    if custom_alias is not None:
+        alias_exists = (
+            db.query(Url).filter(Url.short_code == custom_alias).first()
+        )
         if alias_exists:
-            return {"error": "Custom alias already in use"}
+            raise ShortUrlConflictError("Custom alias already in use")
 
     max_attempts = 5
     for _ in range(max_attempts):
+        attempted_code = None
+
         try:
             db_url = Url(long_url=long_url)
             db.add(db_url)
             db.flush()
 
-            code = custom_alias or encode_id(db_url.id)
-            db_url.short_code = code
+            attempted_code = custom_alias or encode_id(db_url.id)
+            db_url.short_code = attempted_code
             db.commit()
 
-            return {
-                "short_code": code,
-                "created_at": db_url.created_at,
-                "short_url": f"{base_url}{code}",
-                "message": "New Short Url created successfully",
-            }
+            return _url_result(
+                db_url,
+                base_url,
+                "New Short Url created successfully",
+            )
         except IntegrityError:
             db.rollback()
-            existing_url = db.query(Url).filter(Url.long_url == long_url).first()
+
+            existing_url = (
+                db.query(Url).filter(Url.long_url == long_url).first()
+            )
             if existing_url:
-                if custom_alias and custom_alias != existing_url.short_code:
-                    return {
-                        "error": (
-                            "URL already shortened with a different alias: "
-                            f"{existing_url.short_code}"
+                if (
+                    custom_alias is not None
+                    and custom_alias != existing_url.short_code
+                ):
+                    raise ShortUrlConflictError(
+                        "URL already shortened with a different alias: "
+                        f"{existing_url.short_code}"
+                    )
+                return _url_result(
+                    existing_url,
+                    base_url,
+                    "URL already shortened",
+                )
+
+            if attempted_code is not None:
+                code_owner = (
+                    db.query(Url)
+                    .filter(Url.short_code == attempted_code)
+                    .first()
+                )
+                if code_owner:
+                    if custom_alias is not None:
+                        raise ShortUrlConflictError(
+                            "Custom alias already in use"
                         )
-                    }
-                return {
-                    "short_code": existing_url.short_code,
-                    "created_at": existing_url.created_at,
-                    "short_url": f"{base_url}{existing_url.short_code}",
-                    "message": "URL already shortened",
-                }
+                    continue
 
-            if custom_alias:
-                return {"error": "Custom alias already in use"}
+            raise
 
-    raise RuntimeError("Unable to generate a unique short code after multiple attempts")
+    raise RuntimeError(
+        "Unable to generate a unique short code after multiple attempts"
+    )
 
 
 def get_url_by_code(db: Session, short_code: str):

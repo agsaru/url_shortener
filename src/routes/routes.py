@@ -1,18 +1,23 @@
 import json
 import logging
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from datetime import datetime, UTC
 
 from src.configs.db import get_db
+from src.configs.limiter import limiter
 from src.configs.redis_client import cache
 from src.models.schema import UrlCreate, UrlResponse
-from src.utils.url import create_short_url, get_url_by_code, update_url_stats
-from src.configs.limiter import limiter
+from src.utils.url import (
+    ShortUrlConflictError,
+    create_short_url,
+    get_url_by_code,
+    update_url_stats,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,6 +39,7 @@ def record_visit_safely(db: Session, short_code: str) -> None:
 def shorten_url(
     payload: UrlCreate,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     base_url = str(request.base_url)
@@ -45,31 +51,33 @@ def shorten_url(
             base_url=base_url,
             custom_alias=payload.custom_alias
         )
+    except ShortUrlConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc)
-        )
-    except RuntimeError:
+        ) from exc
+    except RuntimeError as exc:
         db.rollback()
         logger.exception("Unable to generate a unique short code")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to create a short URL right now",
-        )
-    except SQLAlchemyError:
+        ) from exc
+    except SQLAlchemyError as exc:
         db.rollback()
         logger.exception("Database failure while shortening URL")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="URL shortening service is temporarily unavailable",
-        )
+        ) from exc
 
-    if "error" in result:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result["error"]
-        )
+    if result["message"] == "URL already shortened":
+        response.status_code = status.HTTP_200_OK
 
     return {
         "success": True,
