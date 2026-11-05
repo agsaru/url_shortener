@@ -9,13 +9,20 @@ from sqlalchemy.orm import Session
 from datetime import datetime, UTC
 
 from src.configs.db import get_db
-from src.configs.redis_client import cache 
+from src.configs.redis_client import cache
 from src.models.schema import UrlCreate, UrlResponse
 from src.utils.url import create_short_url, get_url_by_code, update_url_stats
 from src.configs.limiter import limiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def record_visit_safely(db: Session, short_code: str) -> None:
+    try:
+        update_url_stats(db, short_code)
+    except (SQLAlchemyError, LookupError):
+        logger.exception("Unable to update visit statistics for %s", short_code)
 
 
 @router.post(
@@ -38,6 +45,18 @@ def shorten_url(
             base_url=base_url,
             custom_alias=payload.custom_alias
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc)
+        )
+    except RuntimeError:
+        db.rollback()
+        logger.exception("Unable to generate a unique short code")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to create a short URL right now",
+        )
     except SQLAlchemyError:
         db.rollback()
         logger.exception("Database failure while shortening URL")
@@ -58,6 +77,7 @@ def shorten_url(
         "createdAt": result["created_at"],
         "message": result.get("message", "Success")
     }
+
 
 @router.get("/{short_code}", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 def redirect_url(short_code: str, db: Session = Depends(get_db)):
@@ -89,30 +109,28 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
             if expires_at and cached_expires_at is None:
                 cached_data = None
 
-            if (
-                cached_data
-                and
-                cached_expires_at
-                and cached_expires_at.tzinfo is None
-                and cached_expires_at.replace(tzinfo=UTC) < datetime.now(UTC)
-            ) or (
-                cached_expires_at
-                and cached_expires_at.tzinfo is not None
-                and cached_expires_at < datetime.now(UTC)
-            ):
-                try:
-                    cache.delete(short_code)
-                except RedisError:
-                    logger.exception(
-                        "Redis cache delete failed for expired short code %s",
-                        short_code,
-                    )
-                raise HTTPException(
-                    status_code=status.HTTP_410_GONE,
-                    detail="This Short URL has expired",
+            if cached_data and cached_expires_at:
+                expiry_utc = (
+                    cached_expires_at.replace(tzinfo=UTC)
+                    if cached_expires_at.tzinfo is None
+                    else cached_expires_at
                 )
-            update_url_stats(db, short_code)
-            return RedirectResponse(url=cached_data["long_url"])
+                if expiry_utc < datetime.now(UTC):
+                    try:
+                        cache.delete(short_code)
+                    except RedisError:
+                        logger.exception(
+                            "Redis cache delete failed for expired short code %s",
+                            short_code,
+                        )
+                    raise HTTPException(
+                        status_code=status.HTTP_410_GONE,
+                        detail="This Short URL has expired",
+                    )
+
+            if cached_data:
+                record_visit_safely(db, short_code)
+                return RedirectResponse(url=cached_data["long_url"])
 
     url_data = get_url_by_code(db, short_code)
 
@@ -121,7 +139,7 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Short URL not found"
         )
-        
+
     expires_at = (
         url_data.expires_at.replace(tzinfo=UTC)
         if url_data.expires_at and url_data.expires_at.tzinfo is None
@@ -142,7 +160,7 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
     except RedisError:
         logger.exception("Redis cache write failed for short code %s", short_code)
 
-    update_url_stats(db, short_code)
+    record_visit_safely(db, short_code)
 
     return RedirectResponse(url=url_data.long_url)
 
