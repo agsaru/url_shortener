@@ -10,7 +10,7 @@ class Url(Base):
         UniqueConstraint("long_url", name="uq_urls_long_url"),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     long_url = Column(String, nullable=False)
     short_code = Column(String, unique=True, index=True, nullable=True)
     visit_count = Column(Integer, default=0)
